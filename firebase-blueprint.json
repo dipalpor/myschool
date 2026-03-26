@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "A student in the school system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the student." },
+        "name": { "type": "string", "description": "Full name of the student." },
+        "rollNumber": { "type": "string", "description": "Roll number assigned to the student." },
+        "class": { "type": "string", "description": "The class/grade the student is in." },
+        "section": { "type": "string", "description": "The section assigned to the student." },
+        "parentName": { "type": "string", "description": "Name of the student's parent or guardian." },
+        "parentEmail": { "type": "string", "description": "Email of the parent for portal access." },
+        "contactNumber": { "type": "string", "description": "Contact phone number for the student/parent." },
+        "address": { "type": "string", "description": "Residential address of the student." },
+        "admissionDate": { "type": "string", "format": "date", "description": "The date the student was admitted." },
+        "status": { "type": "string", "enum": ["Active", "Inactive"], "description": "Current status of the student." }
+      },
+      "required": ["name", "rollNumber", "class", "status"]
+    },
+    "Fee": {
+      "title": "Fee",
+      "description": "A fee record for a student.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the fee record." },
+        "studentId": { "type": "string", "description": "Reference to the student ID." },
+        "studentName": { "type": "string", "description": "Name of the student (denormalized)." },
+        "amount": { "type": "number", "description": "The amount of the fee." },
+        "month": { "type": "string", "description": "The month the fee is for." },
+        "year": { "type": "number", "description": "The year the fee is for." },
+        "status": { "type": "string", "enum": ["Paid", "Unpaid"], "description": "Payment status of the fee." },
+        "paymentDate": { "type": "string", "format": "date", "description": "The date the fee was paid." }
+      },
+      "required": ["studentId", "amount", "month", "year", "status"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "An attendance record for a student on a specific date.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the attendance record." },
+        "studentId": { "type": "string", "description": "Reference to the student ID." },
+        "date": { "type": "string", "format": "date", "description": "The date of attendance." },
+        "status": { "type": "string", "enum": ["Present", "Absent", "Late"], "description": "Attendance status." },
+        "class": { "type": "string", "description": "The class for which attendance was marked." }
+      },
+      "required": ["studentId", "date", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the system (admin or parent).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID." },
+        "email": { "type": "string", "description": "Email address of the user." },
+        "role": { "type": "string", "enum": ["admin", "parent"], "description": "Role of the user." },
+        "studentId": { "type": "string", "description": "Linked student ID for parent users." }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Parent": {
+      "title": "Parent",
+      "description": "A parent user of the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the parent." },
+        "name": { "type": "string", "description": "Full name of the parent." },
+        "email": { "type": "string", "description": "Email address of the parent." },
+        "password": { "type": "string", "description": "Password for the parent portal." },
+        "studentId": { "type": "string", "description": "Linked student ID." },
+        "studentName": { "type": "string", "description": "Name of the linked student." },
+        "contactNumber": { "type": "string", "description": "Contact phone number of the parent." },
+        "status": { "type": "string", "enum": ["active", "locked"], "description": "Account status." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the account was created." }
+      },
+      "required": ["name", "email", "password", "studentId", "contactNumber", "status", "createdAt"]
+    },
+    "Timetable": {
+      "title": "Timetable",
+      "description": "A class timetable.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the timetable." },
+        "class": { "type": "string", "description": "The class/grade." },
+        "section": { "type": "string", "description": "The section." },
+        "entries": { "type": "array", "description": "List of timetable entries." },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "When the timetable was last updated." }
+      },
+      "required": ["class", "section", "entries"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "An in-app notification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "success", "error"] },
+        "recipientId": { "type": "string" },
+        "recipientRole": { "type": "string", "enum": ["admin", "teacher", "parent", "all"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "readBy": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title", "message", "type", "recipientId", "recipientRole", "createdAt"]
+    },
+    "SMSLog": {
+      "title": "SMSLog",
+      "description": "A log of a sent SMS message.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "recipientPhone": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["sent", "failed"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["student", "teacher", "parent"] }
+      },
+      "required": ["recipientName", "recipientPhone", "message", "status", "timestamp", "type"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of student records."
+    },
+    "/fees/{feeId}": {
+      "schema": "Fee",
+      "description": "Collection of fee records."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Collection of attendance records."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of administrative users."
+    },
+    "/timetables/{timetableId}": {
+      "schema": "Timetable",
+      "description": "Collection of class timetables."
+    },
+    "/parents/{parentId}": {
+      "schema": "Parent",
+      "description": "Collection of parent users."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Collection of system notifications."
+    },
+    "/sms_logs/{logId}": {
+      "schema": "SMSLog",
+      "description": "Collection of SMS communication logs."
+    }
+  }
+}

@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, role
+    //
+    // Collection: teachers
+    // Fields: name, email, phone, subject, salary, joiningDate, username, password, role, status, failedAttempts, permissions, assignedClasses
+    //
+    // Collection: students
+    // Fields: name, rollNumber, class, section, parentName, contactNumber, address, admissionDate, status
+    //
+    // Collection: fees
+    // Fields: studentId, studentName, amount, month, year, status, paymentDate
+    //
+    // Collection: attendance
+    // Fields: studentId, date, status, class
+    //
+    // Collection: exams
+    // Fields: title, class, subject, date, maxMarks, passingMarks
+    //
+    // Collection: results
+    // Fields: examId, studentId, studentName, rollNumber, marksObtained, status
+    //
+    // Collection: timetables
+    // Fields: class, section, entries, lastUpdated
+    //
+    // Collection: parents
+    // Fields: name, email, password, studentId, studentName, contactNumber, status, createdAt
+    //
+    // Collection: notifications
+    // Fields: title, message, type, recipientId, recipientRole, createdAt, readBy
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) && get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "dipalpor@gmail.com" && request.auth.token.email_verified == true)
+        );
+    }
+
+    function isParentOf(studentId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId;
+    }
+
+    function hasModulePermission(module, level) {
+      let teacherPath = /databases/$(database)/documents/teachers/$(request.auth.uid);
+      return isAuthenticated() && 
+             (isAdmin() || 
+              (exists(teacherPath) && 
+               (
+                 (level == 'read' && (get(teacherPath).data.permissions.hasAny([{'module': module, 'access': 'read'}, {'module': module, 'access': 'write'}, {'module': module, 'access': 'full'}]))) ||
+                 (level == 'write' && (get(teacherPath).data.permissions.hasAny([{'module': module, 'access': 'write'}, {'module': module, 'access': 'full'}]))) ||
+                 (level == 'full' && (get(teacherPath).data.permissions.hasAny([{'module': module, 'access': 'full'}])))
+               )
+              )
+             );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasOnly(['uid', 'email', 'role']) &&
+             data.uid is string && data.email is string &&
+             data.role == 'admin';
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['name', 'email', 'username', 'role', 'status']) &&
+             data.name is string && data.email is string &&
+             data.username is string &&
+             data.role in ['admin', 'teacher'] &&
+             data.status in ['active', 'locked'];
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'rollNumber', 'class', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.rollNumber is string && data.rollNumber.size() > 0 &&
+             data.class is string &&
+             data.status in ['Active', 'Inactive'];
+    }
+
+    function isValidFee(data) {
+      return data.keys().hasAll(['studentId', 'amount', 'month', 'year', 'status']) &&
+             data.studentId is string &&
+             data.amount is number && data.amount >= 0 &&
+             data.month is string &&
+             data.year is number &&
+             data.status in ['Paid', 'Unpaid'];
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['studentId', 'date', 'status']) &&
+             data.studentId is string &&
+             data.date is string &&
+             data.status in ['Present', 'Absent', 'Late'];
+    }
+
+    function isValidExam(data) {
+      return data.keys().hasAll(['title', 'class', 'subject', 'date', 'maxMarks', 'passingMarks']) &&
+             data.title is string && data.class is string && data.subject is string &&
+             data.date is string && data.maxMarks is number && data.passingMarks is number;
+    }
+
+    function isValidResult(data) {
+      return data.keys().hasAll(['examId', 'studentId', 'studentName', 'rollNumber', 'marksObtained', 'status']) &&
+             data.examId is string && data.studentId is string &&
+             data.marksObtained is number && data.status in ['Pass', 'Fail'];
+    }
+
+    function isValidTimetable(data) {
+      return data.keys().hasAll(['class', 'section', 'entries']) &&
+             data.class is string && data.section is string && data.entries is list;
+    }
+
+    function isValidParent(data) {
+      return data.keys().hasAll(['name', 'email', 'password', 'studentId', 'contactNumber', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.size() > 0 &&
+             data.password is string && data.password.size() >= 6 &&
+             data.studentId is string &&
+             data.contactNumber is string &&
+             data.status in ['active', 'locked'] &&
+             data.createdAt is string;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['title', 'message', 'type', 'recipientId', 'recipientRole', 'createdAt']) &&
+             data.title is string && data.message is string &&
+             data.type in ['info', 'warning', 'success', 'error'] &&
+             data.recipientRole in ['admin', 'teacher', 'parent', 'all'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /teachers/{teacherId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidTeacher(request.resource.data);
+      allow update: if (isAdmin() || (isAuthenticated() && request.auth.uid == teacherId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['password', 'failedAttempts', 'status']))) && isValidTeacher(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isAdmin() || hasModulePermission('students', 'read') || isParentOf(studentId);
+      allow create: if hasModulePermission('students', 'write') && isValidStudent(request.resource.data);
+      allow update: if hasModulePermission('students', 'write') && isValidStudent(request.resource.data);
+      allow delete: if hasModulePermission('students', 'full');
+    }
+
+    match /fees/{feeId} {
+      allow read: if isAdmin() || hasModulePermission('fees', 'read') || isParentOf(resource.data.studentId);
+      allow create: if hasModulePermission('fees', 'write') && isValidFee(request.resource.data);
+      allow update: if hasModulePermission('fees', 'write') && isValidFee(request.resource.data);
+      allow delete: if hasModulePermission('fees', 'full');
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isAdmin() || hasModulePermission('attendance', 'read') || isParentOf(resource.data.studentId);
+      allow create: if hasModulePermission('attendance', 'write') && isValidAttendance(request.resource.data);
+      allow update: if hasModulePermission('attendance', 'write') && isValidAttendance(request.resource.data);
+      allow delete: if hasModulePermission('attendance', 'full');
+    }
+
+    match /exams/{examId} {
+      allow read: if true;
+      allow create: if hasModulePermission('exams', 'write') && isValidExam(request.resource.data);
+      allow update: if hasModulePermission('exams', 'write') && isValidExam(request.resource.data);
+      allow delete: if hasModulePermission('exams', 'full');
+    }
+
+    match /results/{resultId} {
+      allow read: if isAdmin() || hasModulePermission('exams', 'read') || isParentOf(resource.data.studentId);
+      allow create: if hasModulePermission('exams', 'write') && isValidResult(request.resource.data);
+      allow update: if hasModulePermission('exams', 'write') && isValidResult(request.resource.data);
+      allow delete: if hasModulePermission('exams', 'full');
+    }
+
+    match /timetables/{timetableId} {
+      allow read: if true;
+      allow create: if hasModulePermission('timetable', 'write') && isValidTimetable(request.resource.data);
+      allow update: if hasModulePermission('timetable', 'write') && isValidTimetable(request.resource.data);
+      allow delete: if hasModulePermission('timetable', 'full');
+    }
+
+    match /parents/{parentId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == parentId);
+      allow create: if isAdmin() && isValidParent(request.resource.data);
+      allow update: if (isAdmin() || (isAuthenticated() && request.auth.uid == parentId)) && isValidParent(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == 'all' || 
+        resource.data.recipientId == request.auth.uid || 
+        resource.data.recipientRole == 'all' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == resource.data.recipientRole) ||
+        (exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) && get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.role == resource.data.recipientRole)
+      );
+      allow create: if isAdmin() || hasModulePermission('admin', 'write');
+      allow update: if (isAdmin() || hasModulePermission('admin', 'write')) || 
+                    (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']));
+      allow delete: if isAdmin() || hasModulePermission('admin', 'full');
+    }
+
+    match /sms_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
